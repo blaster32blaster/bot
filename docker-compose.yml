@@ -1,0 +1,99 @@
+#This file is inside a folder named 'dock' at the root of my laravel project
+version: "3.2"
+services:
+    #PHP with apache
+    bot_container:
+      #image will be built by processing the Dockerfile in this path
+      build: .
+      container_name: bot_cont
+      command:
+        sh ./dock-files/startup.sh
+      environment:
+        XDEBUG_CONFIG: remote_host=host.docker.internal remote_port=9000 remote_enable=1
+      links:
+        - bot_redis
+        - bot_db
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.bot.rule=Host(`bot.localhost`)"
+        - "traefik.http.routers.bot.entrypoints=web"
+        - "traefik.port=80"
+      #map host folders (relative to this file) to service
+      volumes:
+        # - ./public/:/var/www/html
+        - ./:/var/www/html
+      #mark the db services as a dependency
+      depends_on:
+        - bot_redis
+        - bot_db
+      restart:
+        always
+      networks:
+        - traefik_webgateway
+        - internal
+      ports:
+        - "8075:80"
+        - 6005:6001
+    #mysql db
+    bot_db:
+      image: mysql:5.7.20
+      # build: ./dock-files/MySqlDB
+      container_name: bot-mysql-database
+      restart: always
+      #storing the mysql folder outside allows persistence
+      volumes:
+        - db_data:/var/lib/mysql
+      environment:
+        MYSQL_ROOT_PASSWORD: mysql_root_password1
+        MYSQL_USER: user
+        MYSQL_PASSWORD: mysql_user_password1
+        MYSQL_DATABASE: mysql
+      labels:
+        - "traefik.enable=false"
+      networks:
+        internal:
+          aliases:
+            - bot_mysql
+      ports:
+      - "4317:3306"
+    #redis
+    bot_redis:
+      command: redis-server --requirepass secret
+      image: redis
+      container_name: botredis
+      labels:
+        - "traefik.enable=false"
+      networks:
+        internal:
+          aliases:
+            - bot_redis
+      volumes:
+        - "redis_data:/data"
+    es01:
+      image: docker.elastic.co/elasticsearch/elasticsearch:7.8.0
+      container_name: es01
+      environment:
+        - node.name=es01
+        - discovery.type=single-node
+        - bootstrap.memory_lock=true
+        - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      ulimits:
+        memlock:
+          soft: -1
+          hard: -1
+      volumes:
+        - data01:/usr/share/elasticsearch/data
+      ports:
+        - 9200:9200
+        - 9300:9300
+      networks:
+        - internal
+volumes:
+    db_data:
+    redis_data:
+    data01:
+networks:
+  traefik_webgateway:
+    external: true
+  internal:
+    external: true
